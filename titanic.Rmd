@@ -1,0 +1,108 @@
+---
+title: "Titanic_Machine_learning"
+author: "Srikar"
+date: "11 March 2018"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## libraries
+``` {r}
+library(ggplot2)
+library(dplyr)
+```
+## Load Dataset
+Seperate the values by
+Replace the string empty values with NA
+
+```{r}
+dataset <- read.csv(file = "train.csv",header = TRUE, sep = ",",na.strings=c("","NA"))
+
+head(dataset)
+```
+## Find the Columns with null values
+```{r}
+sapply(dataset, function(x) sum((is.na(x))))
+
+```
+## Replace NA values with 
+```{r}
+```
+## Check the impact of Sex on Survival rate
+Males survived low when compared to females
+```{r}
+ggplot(dataset)+aes(x = Survived, fill = Sex)+geom_bar(width = 0.25,position = "dodge")
+```
+
+
+## Check the impact of Pclass on Survival rate
+Pclass = 3 has less the least survival rate
+```{r}
+dataset$Pclass <- as.factor(dataset$Pclass)
+ggplot(dataset)+aes(x = Survived, fill = Pclass)+geom_bar(width = 0.25,position = "dodge")
+```
+
+```{r}
+mod_traininset <- dataset %>% select(-Cabin,-PassengerId,-Name, - Ticket)
+head(mod_traininset)
+
+```
+## replace the Age = Null with appropriate values
+```{r}
+mod_traininset <- mod_traininset%>%
+    mutate(Age = replace(Age,is.na(Age) & Pclass == 1, 37)) %>%
+      mutate(Age = replace(Age,is.na(Age) & Pclass == 2, 29)) %>%
+      mutate(Age = replace(Age,is.na(Age) & Pclass == 3, 24))
+head(mod_traininset)
+
+  
+```
+```{r}
+library(caTools)
+set.seed(123)
+split = sample.split(mod_traininset$Survived, SplitRatio = 0.8)
+training_set = subset(mod_traininset, split == TRUE)
+test_set = subset(mod_traininset, split == FALSE)
+# Fitting Logistic Regression to the Training set
+classifier = glm(formula = Survived ~ .,
+                 family = binomial,
+                 data = training_set)
+
+summary(classifier)
+
+
+```
+As the significance of Parch and Fare is low.
+Eliminating the columns Parch and Fare
+```{r}
+mod_traininset <- select(mod_traininset, -Parch, -Fare)
+
+set.seed(123)
+split = sample.split(mod_traininset$Survived, SplitRatio = 0.8)
+training_set = subset(mod_traininset, split == TRUE)
+test_set = subset(mod_traininset, split == FALSE)
+# Fitting Logistic Regression to the Training set
+classifier = glm(formula = Survived ~ .,
+                 family = binomial,
+                 data = training_set)
+
+summary(classifier)
+
+```
+
+```{r}
+# Predicting the Test set results
+prob_pred = predict(classifier, type = 'response', newdata = select(test_set, -Survived))
+y_pred = ifelse(prob_pred > 0.5, 1, 0)
+
+
+# Making the Confusion Matrix
+cm = table(test_set$Survived, y_pred > 0.5)
+cm
+```
+
