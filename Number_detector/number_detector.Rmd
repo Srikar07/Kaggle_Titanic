@@ -1,0 +1,147 @@
+---
+title: "Number_detector"
+author: "Srikar"
+date: "17 March 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caTools)
+library(caret)
+library(h2o)
+```
+
+## Load data
+```{r dataset}
+
+dataset <- read.csv(file = 'train.csv', header = TRUE, sep = ',', na.strings = c(" ","NA"))
+head(dataset)
+```
+Check for null values -- No null or nan in the dataset
+```{r}
+sum(is.na(dataset))
+sum(is.nan(as.matrix(dataset)))
+
+```
+Check for the total number of dataset for each number
+As the total number is almost close-- good amount of data is available
+```{r}
+
+dataset %>% 
+  group_by(label)%>%
+  count()
+```
+## PCA 
+remove columns with the near zero variance
+```{r}
+nzr <- nearZeroVar(dataset[,-1],saveMetrics=T,freqCut=10000/1,uniqueCut=1/7)
+sum(nzr$zeroVar)
+sum(nzr$nzv)
+
+
+cutvar <- rownames(nzr[nzr$nzv==TRUE,])
+var <- setdiff(names(dataset),cutvar)
+train <- dataset[,var] # removing all the least covariant columns
+
+maxVal <- max(dataset)
+
+label <- as.factor(train$label)
+
+train[-1] <- train[-1]/ maxVal
+cov_train <- cov(train[-1])
+
+
+# PCA 
+train_pc <- prcomp(cov_train)
+
+#summary(train_pc)
+
+train_score <- as.matrix(train[-1]) %*% train_pc$rotation[,1:25]
+train_final <- cbind(label,as.data.frame(train_score))
+head(train_final)
+
+```
+
+
+## Pick a column to display a number
+0 -- black and white -- values
+```{r}
+val <- 7
+data_matrix <- matrix(unlist(dataset[val,-1]),nrow = 28,byrow = TRUE)
+data_matrix <- t(apply(data_matrix, 2, rev))
+image(as.matrix(data_matrix), col = grey(seq(0, 1, length = 512)))
+
+```
+## Sampling data
+```{r}
+set.seed(123)
+split = sample.split(train_final$label, SplitRatio = 0.8)
+training_set = subset(train_final, split == TRUE)
+test_set = subset(train_final, split == FALSE)
+```
+
+##Scaling
+```{r}
+# Feature Scaling
+training_set[-1] = scale(training_set[-1])
+test_set[-1] = scale(test_set[-1])
+colSums(is.na(training_set))
+
+```
+
+
+```{r}
+
+# install.packages('h2o')
+h2o.init(nthreads = -1)
+model = h2o.deeplearning(y = 'label',
+                         training_frame = as.h2o(training_set),
+                         activation = 'Rectifier',
+                         hidden = c(20,20),
+                         epochs = 100,
+                         train_samples_per_iteration = -2)
+
+```
+# Testing data
+```{r}
+# Predicting the Test set results
+y_pred = h2o.predict(model, newdata = as.h2o(test_set[-1]))
+y_pred = as.matrix(y_pred)
+
+# Making the Confusion Matrix
+cm = table(test_set[, 1], y_pred[,1])
+
+#accuracy
+sum(diag(cm)) / dim(test_set)[1]
+
+```
+
+## Test data -- unlabled data
+```{r}
+
+test_dataset <- read.csv(file = 'test.csv', header = TRUE, sep = ',', na.strings = c(" ","NA"))
+
+test_dataset <- test_dataset[,var[-1]]/maxVal
+test_dataset <- as.matrix(test_dataset) %*% train_pc$rotation[,1:25]
+test_dataset <- as.data.frame(test_dataset)
+
+
+head(test_dataset)
+dim(test_dataset)
+
+
+
+# Predicting the Test set results
+y_pred = h2o.predict(model, newdata = as.h2o(test_dataset))
+y_pred[,1]
+
+predict <- as.data.frame(y_pred[,1])
+
+write.csv(predict,file = "submission03.csv")
+
+
+#h2o.shutdown()
+```
+
